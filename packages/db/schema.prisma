@@ -1,0 +1,363 @@
+// Adivari AI — database schema (Prisma / PostgreSQL)
+// Source of truth: SPEC.md. This models accounts, campaigns, ad delivery,
+// work sessions, the double-entry ledger, and payouts.
+//
+// Money is stored in integer minor units (cents) to avoid float drift.
+// All amounts are USD for v0.1.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity & accounts
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  EARNER
+  ADVERTISER
+  ADMIN
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String?
+  name         String?
+  role         UserRole @default(EARNER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  earnerProfile     EarnerProfile?
+  advertiserAccount AdvertiserAccount?
+}
+
+// Earner-specific state: trust, devices, work, earnings.
+model EarnerProfile {
+  id         String  @id @default(cuid())
+  userId     String  @unique
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 0..100 trust score; drives hold length, caps, review intensity.
+  trustScore Int     @default(50)
+  // Earner revenue share, basis points (6000 = 60%).
+  revshareBps Int    @default(6000)
+  payoutMethod    PayoutMethod?
+  payoutAccountId String?       // external id (Stripe Connect / PayPal / Tremendous)
+  kycStatus       KycStatus     @default(NONE)
+  countryCode     String?
+
+  devices       Device[]
+  workSessions  WorkSession[]
+  impressions   Impression[]
+  clicks        Click[]
+  ledgerEntries LedgerEntry[]
+  payouts       Payout[]
+}
+
+enum KycStatus {
+  NONE
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum PayoutMethod {
+  STRIPE_CONNECT
+  PAYPAL
+  TREMENDOUS
+}
+
+model Device {
+  id          String        @id @default(cuid())
+  earnerId    String
+  earner      EarnerProfile @relation(fields: [earnerId], references: [id], onDelete: Cascade)
+  fingerprint String        // hashed device fingerprint
+  os          String?
+  appVersion  String?
+  lastSeenAt  DateTime?
+  createdAt   DateTime      @default(now())
+
+  workSessions WorkSession[]
+
+  @@unique([earnerId, fingerprint])
+  @@index([fingerprint])
+}
+
+model AdvertiserAccount {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName  String?
+  // Prepaid balance in cents; campaign spend draws this down.
+  balanceCents Int      @default(0)
+  stripeCustomerId String?
+  createdAt    DateTime @default(now())
+
+  campaigns     Campaign[]
+  topUps        TopUp[]
+  ledgerEntries LedgerEntry[]
+}
+
+// ---------------------------------------------------------------------------
+// Campaigns & creatives
+// ---------------------------------------------------------------------------
+
+enum BidType {
+  CPM // cost per 1,000 viewable impressions
+  CPC // cost per click
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  OUT_OF_BUDGET
+  COMPLETED
+  REJECTED
+}
+
+model Campaign {
+  id           String         @id @default(cuid())
+  advertiserId String
+  advertiser   AdvertiserAccount @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+
+  name        String
+  status      CampaignStatus @default(DRAFT)
+  bidType     BidType
+  // Bid in cents: per-1000-impressions (CPM) or per-click (CPC).
+  bidCents    Int
+  // Lifetime budget and optional daily cap, in cents.
+  budgetCents     Int
+  dailyCapCents   Int?
+  spentCents      Int       @default(0)
+
+  // Targeting (v1: simple). Empty/null = no restriction.
+  targetCountries String[]  @default([])
+  targetLanguages String[]  @default([])
+  targetTags      String[]  @default([])
+  // Per-earner frequency cap within a rolling window.
+  frequencyCapPerDay Int?
+
+  startsAt DateTime?
+  endsAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creatives   Creative[]
+  impressions Impression[]
+  clicks      Click[]
+
+  @@index([status])
+}
+
+enum CreativeType {
+  IMAGE
+  HTML
+  VIDEO // VAST, Phase 4
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Creative {
+  id         String       @id @default(cuid())
+  campaignId String
+  campaign   Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  type       CreativeType
+  assetUrl   String       // CDN url for image/video; or hosted HTML
+  clickUrl   String       // advertiser landing page
+  width      Int?
+  height     Int?
+  moderation ModerationStatus @default(PENDING)
+  createdAt  DateTime     @default(now())
+
+  impressions Impression[]
+  clicks      Click[]
+}
+
+// ---------------------------------------------------------------------------
+// Work sessions (agent busy time)
+// ---------------------------------------------------------------------------
+
+enum DetectionSource {
+  HOOK     // official agent hook (highest trust)
+  WRAPPER  // adivari run <cmd>
+  HEURISTIC
+  MANUAL   // lowest trust
+}
+
+model WorkSession {
+  id        String        @id @default(cuid())
+  earnerId  String
+  earner    EarnerProfile @relation(fields: [earnerId], references: [id], onDelete: Cascade)
+  deviceId  String?
+  device    Device?       @relation(fields: [deviceId], references: [id])
+
+  agent     String          // "claude-code", "codex", ...
+  source    DetectionSource
+  startedAt DateTime        @default(now())
+  endedAt   DateTime?
+  // Total verified busy milliseconds within the session.
+  busyMs    Int             @default(0)
+
+  busyIntervals BusyInterval[]
+  impressions   Impression[]
+
+  @@index([earnerId, startedAt])
+}
+
+// A single contiguous "agent is computing" window.
+model BusyInterval {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   WorkSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  startedAt DateTime
+  endedAt   DateTime?
+  // Liveness checks issued / passed during the interval.
+  livenessIssued Int    @default(0)
+  livenessPassed Int    @default(0)
+
+  @@index([sessionId])
+}
+
+// ---------------------------------------------------------------------------
+// Ad delivery events
+// ---------------------------------------------------------------------------
+
+model Impression {
+  id         String        @id @default(cuid())
+  campaignId String
+  campaign   Campaign      @relation(fields: [campaignId], references: [id])
+  creativeId String
+  creative   Creative      @relation(fields: [creativeId], references: [id])
+  earnerId   String
+  earner     EarnerProfile @relation(fields: [earnerId], references: [id])
+  sessionId  String?
+  session    WorkSession?  @relation(fields: [sessionId], references: [id])
+
+  // Single-use signed token issued at ad selection; enforces dedupe.
+  token      String        @unique
+  servedAt   DateTime      @default(now())
+  viewableAt DateTime?     // set when viewability threshold met
+  viewable   Boolean       @default(false)
+  // Billing snapshot (cents) at the time the impression was charged.
+  billedCents   Int        @default(0)
+  earnedCents   Int        @default(0)
+  // Invalid-traffic verdict; non-NULL excludes from billing/earning.
+  ivtReason  String?
+
+  click Click?
+
+  @@index([campaignId, servedAt])
+  @@index([earnerId, servedAt])
+}
+
+model Click {
+  id           String        @id @default(cuid())
+  impressionId String        @unique
+  impression   Impression    @relation(fields: [impressionId], references: [id], onDelete: Cascade)
+  campaignId   String
+  campaign     Campaign      @relation(fields: [campaignId], references: [id])
+  creativeId   String
+  creative     Creative      @relation(fields: [creativeId], references: [id])
+  earnerId     String
+  earner       EarnerProfile @relation(fields: [earnerId], references: [id])
+
+  clickedAt   DateTime  @default(now())
+  valid       Boolean   @default(false)
+  billedCents Int       @default(0)
+  earnedCents Int       @default(0)
+  ivtReason   String?
+
+  @@index([campaignId, clickedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Ledger, balances, payments
+// ---------------------------------------------------------------------------
+
+// Double-entry-style ledger. Each economic event produces entries that net to
+// zero across accounts. `amountCents` is signed relative to the named account.
+enum LedgerEntryType {
+  TOPUP              // advertiser adds funds
+  AD_SPEND           // advertiser charged for impression/click
+  EARNER_ACCRUAL     // earner credited revshare
+  PLATFORM_REVENUE   // platform margin
+  PAYOUT             // earner withdrawal
+  REFUND             // IVT refund to advertiser
+  ADJUSTMENT         // manual correction
+}
+
+model LedgerEntry {
+  id        String          @id @default(cuid())
+  type      LedgerEntryType
+  amountCents Int           // signed
+  currency  String          @default("USD")
+
+  advertiserId String?
+  advertiser   AdvertiserAccount? @relation(fields: [advertiserId], references: [id])
+  earnerId     String?
+  earner       EarnerProfile?     @relation(fields: [earnerId], references: [id])
+
+  // Optional links to the originating event for auditability.
+  impressionId String?
+  clickId      String?
+  payoutId     String?
+  topUpId      String?
+
+  createdAt DateTime @default(now())
+
+  @@index([advertiserId, createdAt])
+  @@index([earnerId, createdAt])
+  @@index([type, createdAt])
+}
+
+model TopUp {
+  id           String   @id @default(cuid())
+  advertiserId String
+  advertiser   AdvertiserAccount @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  amountCents  Int
+  stripePaymentIntentId String?
+  status       PaymentStatus @default(PENDING)
+  createdAt    DateTime @default(now())
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum PayoutStatus {
+  PENDING    // accrued, inside hold window
+  AVAILABLE  // cleared hold + review, withdrawable
+  REQUESTED
+  PROCESSING
+  PAID
+  FAILED
+}
+
+model Payout {
+  id        String        @id @default(cuid())
+  earnerId  String
+  earner    EarnerProfile @relation(fields: [earnerId], references: [id], onDelete: Cascade)
+  amountCents Int
+  method    PayoutMethod
+  status    PayoutStatus  @default(PENDING)
+  // Funds become AVAILABLE only after this timestamp + fraud review.
+  holdUntil DateTime?
+  externalRef String?     // provider transfer id
+  createdAt DateTime      @default(now())
+  paidAt    DateTime?
+
+  @@index([earnerId, status])
+}
