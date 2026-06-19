@@ -33,7 +33,9 @@ actually billed (shown as a friendly ~$/hr estimate), so payouts are always fund
 
 - 📄 [`SPEC.md`](./SPEC.md) — full product & technical specification (architecture,
   agent detection, ad serving, fraud, economics, roadmap).
-- 🗄️ [`packages/db/schema.prisma`](./packages/db/schema.prisma) — database schema.
+- 💸 [`PAYMENTS.md`](./PAYMENTS.md) — the payments model: advertiser billing (CPM/CPC),
+  earner revenue share, worked dollar examples, and money lifecycle.
+- 🗄️ [`convex/schema.ts`](./convex/schema.ts) — Convex database schema.
 
 ## Planned architecture
 
@@ -42,12 +44,13 @@ A Turborepo monorepo:
 | Package | Purpose |
 |---|---|
 | `apps/web` | Next.js — marketing site + advertiser & earner dashboards + auth |
-| `apps/api` | Node/TS service — ad serving, ingest, ledger, billing, payouts |
 | `apps/desktop` | Tauri app — agent detection, ad surface, viewability/liveness |
-| `packages/shared` | Shared types + client SDK |
-| `packages/db` | Prisma schema + client |
+| `convex/` | Convex backend — schema + queries/mutations/actions/crons (ad serving, ingest, ledger, billing, payouts) |
+| `packages/shared` | Shared TypeScript types |
 
-**Stack:** Postgres + Prisma, Redis, S3/CDN, Stripe (billing + payouts).
+**Stack:** **Convex** (reactive backend + document DB), Stripe (billing + payouts),
+Tauri (desktop). Convex live queries power the real-time earnings counter and replace a
+separate WebSocket/cache layer; transactional mutations keep the ledger correct.
 
 ## Roadmap
 
