@@ -29,6 +29,10 @@ function Dashboard({ userId }: { userId: any }) {
   const topUp = useMutation(api.advertisers.topUp);
   const [amount, setAmount] = useState("50");
 
+  const balanceCents = account?.balanceCents ?? 0;
+  const hasActive = !!campaigns?.some((c) => c.status === "ACTIVE");
+  const starved = balanceCents <= 0 && hasActive;
+
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -58,8 +62,25 @@ function Dashboard({ userId }: { userId: any }) {
         </div>
       </div>
 
+      {starved && (
+        <div className="panel flex items-center justify-between gap-4 border-warn/50 bg-warn/10 p-4 text-sm">
+          <span>
+            ⚠️ Your balance is <b>{usd(balanceCents)}</b> — active campaigns can’t
+            serve ads until you add funds.
+          </span>
+          <button
+            className="btn-brand whitespace-nowrap"
+            onClick={() =>
+              topUp({ userId, amountCents: Math.round(Number(amount) * 100) })
+            }
+          >
+            Add {usd(Math.round(Number(amount) * 100))}
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-4">
-        <Stat label="Balance" value={usd(account?.balanceCents ?? 0)} accent />
+        <Stat label="Balance" value={usd(balanceCents)} accent={balanceCents > 0} />
         <Stat label="Spent" value={usd(reporting?.totals.spentCents ?? 0)} />
         <Stat label="Views" value={num(reporting?.totals.impressions ?? 0)} />
         <Stat label="Clicks" value={num(reporting?.totals.clicks ?? 0)} />
@@ -87,6 +108,7 @@ function Dashboard({ userId }: { userId: any }) {
                 key={c._id}
                 userId={userId}
                 campaign={c}
+                accountBalanceCents={balanceCents}
                 stats={
                   report
                     ? { impressions: report.impressions, clicks: report.clicks, ctr: report.ctr }

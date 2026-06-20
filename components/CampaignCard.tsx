@@ -16,10 +16,12 @@ export function CampaignCard({
   userId,
   campaign,
   stats,
+  accountBalanceCents,
 }: {
   userId: any;
   campaign: any;
   stats: { impressions: number; clicks: number; ctr: number };
+  accountBalanceCents: number;
 }) {
   const setStatus = useMutation(api.campaigns.setStatus);
   const addCreative = useMutation(api.campaigns.addCreative);
@@ -81,6 +83,11 @@ export function CampaignCard({
             >
               {campaign.status}
             </span>
+            {campaign.status === "ACTIVE" && accountBalanceCents <= 0 && (
+              <span className="rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 text-[11px] text-warn">
+                not serving · fund balance
+              </span>
+            )}
           </div>
           <p className="mt-1 text-sm text-zinc-400">
             {campaign.bidType === "CPM"
