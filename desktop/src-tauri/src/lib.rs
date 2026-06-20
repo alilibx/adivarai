@@ -37,7 +37,7 @@ pub fn run() {
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
 
-            TrayIconBuilder::new()
+            let mut tray = TrayIconBuilder::new()
                 .tooltip("Adivari — earn while your agent works")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id().as_ref() {
@@ -49,8 +49,11 @@ pub fn run() {
                     }
                     "quit" => app.exit(0),
                     _ => {}
-                })
-                .build(app)?;
+                });
+            if let Some(icon) = app.default_window_icon() {
+                tray = tray.icon(icon.clone());
+            }
+            tray.build(app)?;
 
             Ok(())
         })

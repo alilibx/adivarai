@@ -16,7 +16,7 @@
         "height": 720,
         "minWidth": 360,
         "resizable": true,
-        "url": "http://localhost:3000/earner"
+        "alwaysOnTop": true
       }
     ],
     "security": {

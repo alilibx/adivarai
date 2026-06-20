@@ -21,7 +21,13 @@ local **agent bridge**, so ads play automatically while your coding agent works.
 - Rust (`rustup`) and the platform's Tauri build deps — see
   https://tauri.app/start/prerequisites/
 - Node 18+, and the web app running (`npm run dev` at the repo root) for `tauri dev`.
-- App icons: `npm run icons` (after adding an `app-icon.png`), or `tauri icon`.
+
+App icons are already generated and committed under `src-tauri/icons/`. To
+regenerate from a new source: replace `app-icon.png` and run `npm run icons`.
+
+The window is **always-on-top** by default so it sits beside your terminal while
+you code. In dev it loads the earner surface from `build.devUrl`
+(`http://localhost:3000/earner`).
 
 ## Run
 
