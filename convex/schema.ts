@@ -146,6 +146,9 @@ export default defineSchema({
     status: campaignStatus,
     bidType: bidType,
     bidCents: v.number(), // per-1000-impressions (CPM) or per-click (CPC)
+    // For CPC auctions: predicted click-through rate in basis points (100 = 1%).
+    // Used to compute an effective per-impression value for ranking.
+    predictedCtrBps: v.optional(v.number()),
     budgetCents: v.number(), // lifetime budget
     dailyCapCents: v.optional(v.number()),
     spentCents: v.number(),
@@ -206,8 +209,11 @@ export default defineSchema({
     billedCents: v.number(), // snapshot charged to advertiser
     earnedCents: v.number(), // snapshot accrued to earner
     ivtReason: v.optional(v.string()), // non-null => excluded from billing
+    // Hold lifecycle: earned money is pending until settled (moved to available).
+    settled: v.boolean(),
   })
     .index("by_token", ["token"])
+    .index("by_earner_settled", ["earnerId", "settled"])
     .index("by_campaign", ["campaignId", "servedAt"])
     .index("by_earner", ["earnerId", "servedAt"]),
 
@@ -221,9 +227,11 @@ export default defineSchema({
     billedCents: v.number(),
     earnedCents: v.number(),
     ivtReason: v.optional(v.string()),
+    settled: v.boolean(),
   })
     .index("by_impression", ["impressionId"])
-    .index("by_campaign", ["campaignId", "clickedAt"]),
+    .index("by_campaign", ["campaignId", "clickedAt"])
+    .index("by_earner_settled", ["earnerId", "settled"]),
 
   // --- Ledger, balances, payments ---
 
