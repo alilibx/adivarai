@@ -22,8 +22,11 @@ async function main() {
   switch (cmd) {
     case "daemon": {
       startDaemon();
-      console.log(`adivari bridge listening on ${BRIDGE_URL}`);
-      console.log("Leave this running; connect the Adivari ad surface to start earning.");
+      const appUrl = process.env.ADIVARI_APP_URL ?? "http://localhost:3000/earner";
+      console.log(`adivari bridge listening on ${BRIDGE_URL} (this is the bridge, not the ad page)`);
+      console.log(`→ Open the ad surface at ${appUrl} and turn on "Auto mode".`);
+      console.log(`  (If it's not running: in the repo root run \`npx convex dev\` then \`npm run dev\`.)`);
+      console.log("Leave this running.");
       break;
     }
 
