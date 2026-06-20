@@ -10,3 +10,11 @@ convex/_generated/
 next-env.d.ts
 .DS_Store
 .vercel
+
+# agent build output
+agent/dist/
+
+# tauri build output
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/dist/

@@ -64,6 +64,22 @@ and watch the ads play and earnings accrue in real time.
 > top-ups/payouts are stubbed (balance credited directly). Both are isolated for easy
 > replacement before any real deployment.
 
+## Earn with your real coding agent (auto mode)
+
+Instead of clicking "Start working", let Adivari detect when your agent is actually
+busy and play ads automatically:
+
+```sh
+cd agent && npm install && npm run build && npm link   # installs the `adivari` CLI
+adivari hooks install        # adds Claude Code busy/idle hooks (merges settings.json)
+adivari daemon               # leave running — local bridge on 127.0.0.1:8787
+```
+
+Then open the earner dashboard, flip on **Auto mode**, and use Claude Code normally —
+ads play while the agent works and pause when it's idle. For other agents:
+`adivari run --agent codex -- codex …`. See [`agent/README.md`](./agent/README.md). The
+[`desktop/`](./desktop/README.md) Tauri app packages this surface natively.
+
 ## What works now
 
 - Advertiser: prepaid balance + top-up, create CPM/CPC campaigns, upload/link
@@ -73,6 +89,9 @@ and watch the ads play and earnings accrue in real time.
 - Backend: ad auction (CPM vs CPC ranked by eCPM), transactional billing + accrual +
   double-entry ledger, budget/daily-cap pacing, single-use impression tokens,
   scheduled daily reset + hold-release crons.
+- Agent detection: `adivari` CLI with a local SSE bridge, Claude Code hooks (precise
+  busy/idle), a generic CLI wrapper, and a watchdog — wired into the earner surface's
+  Auto mode (unit-tested state machine).
 
 ## Planned architecture
 
@@ -83,7 +102,9 @@ Current layout (single Next.js app + Convex backend; Tauri desktop added next ph
 | `convex/` | Backend — `schema.ts` + queries/mutations/crons (auth, ads auction, ingest, ledger, billing, payouts) |
 | `app/` | Next.js App Router — landing, login, advertiser & earner dashboards |
 | `components/` | UI: nav, campaign create/card, the ad player |
-| `lib/` | Client helpers (money formatting) |
+| `lib/` | Client helpers (money formatting, agent-bridge hook) |
+| `agent/` | `adivari` CLI + local bridge daemon — Claude Code hooks & CLI wrapper for busy/idle detection |
+| `desktop/` | Tauri v2 desktop shell hosting the ad surface (scaffold) |
 
 **Stack:** **Convex** (reactive backend + document DB), Next.js + Tailwind, Stripe
 (billing + payouts, stubbed in dev). Convex live queries power the real-time earnings

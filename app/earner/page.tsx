@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSession } from "@/app/providers";
 import { usd, num, timeAgo } from "@/lib/format";
 import { AdPlayer } from "@/components/AdPlayer";
+import { useAgentBridge } from "@/lib/useAgentBridge";
+
+type Source = "HOOK" | "WRAPPER" | "HEURISTIC" | "MANUAL";
 
 export default function EarnerPage() {
   const { session } = useSession();
@@ -29,22 +32,44 @@ function Dashboard({ userId }: { userId: any }) {
   const requestPayout = useMutation(api.earnings.requestPayout);
 
   const [agent, setAgent] = useState(AGENTS[0]);
-  const [source, setSource] = useState<(typeof SOURCES)[number]>("HOOK");
+  const [source, setSource] = useState<Source>("HOOK");
   const [sessionId, setSessionId] = useState<any>(null);
+  const [autoMode, setAutoMode] = useState(false);
+  const transitioning = useRef(false);
+
+  // Auto mode: subscribe to the local agent bridge (`adivari daemon`).
+  const bridge = useAgentBridge(autoMode);
 
   // Resume an existing active session after reload.
   useEffect(() => {
     if (data?.activeSessionId && !sessionId) setSessionId(data.activeSessionId);
   }, [data?.activeSessionId, sessionId]);
 
-  async function start() {
-    const id = await startSession({ userId, agent, source });
-    setSessionId(id);
+  async function start(a: string = agent, s: Source = source) {
+    if (transitioning.current || sessionId) return;
+    transitioning.current = true;
+    try {
+      const id = await startSession({ userId, agent: a, source: s });
+      setSessionId(id);
+    } finally {
+      transitioning.current = false;
+    }
   }
   async function stop() {
     if (sessionId) await endSession({ userId, sessionId });
     setSessionId(null);
   }
+
+  // Drive sessions from the real agent's busy/idle when auto mode is on.
+  useEffect(() => {
+    if (!autoMode || !bridge.connected) return;
+    if (bridge.busy && !sessionId) {
+      void start(bridge.agent ?? "agent", bridge.source ?? "WRAPPER");
+    } else if (!bridge.busy && sessionId) {
+      void stop();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, bridge.connected, bridge.busy, sessionId]);
 
   return (
     <div className="space-y-8">
@@ -68,7 +93,49 @@ function Dashboard({ userId }: { userId: any }) {
         <div className="space-y-4">
           <div className="panel space-y-4 p-5">
             <h2 className="text-lg font-semibold">Work session</h2>
-            {!sessionId ? (
+
+            {/* Auto mode: connect to the real local coding agent. */}
+            <label className="flex cursor-pointer items-center justify-between rounded-lg border border-edge px-3 py-2">
+              <span className="text-sm">
+                Auto mode
+                <span className="block text-xs text-zinc-500">
+                  Detect my agent via <code>adivari daemon</code>
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={autoMode}
+                onChange={(e) => setAutoMode(e.target.checked)}
+                className="h-4 w-4 accent-brand"
+              />
+            </label>
+
+            {autoMode ? (
+              <div className="rounded-lg bg-black/30 p-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      bridge.connected ? "bg-ok" : "bg-zinc-600"
+                    }`}
+                  />
+                  {bridge.connected ? "Bridge connected" : "Waiting for bridge…"}
+                </div>
+                {!bridge.connected && (
+                  <p className="mt-2 text-xs text-zinc-500">
+                    Run <code className="text-brand2">adivari daemon</code> and{" "}
+                    <code className="text-brand2">adivari hooks install</code>,
+                    then use your agent.
+                  </p>
+                )}
+                {bridge.connected && (
+                  <p className="mt-2 text-xs text-zinc-400">
+                    {bridge.busy
+                      ? `● ${bridge.agent} working (${bridge.source}) — ads playing`
+                      : "○ agent idle — ads paused"}
+                  </p>
+                )}
+              </div>
+            ) : !sessionId ? (
               <>
                 <div>
                   <label className="label">Agent</label>
@@ -87,7 +154,7 @@ function Dashboard({ userId }: { userId: any }) {
                   <select
                     className="input"
                     value={source}
-                    onChange={(e) => setSource(e.target.value as any)}
+                    onChange={(e) => setSource(e.target.value as Source)}
                   >
                     {SOURCES.map((s) => (
                       <option key={s}>{s}</option>
@@ -98,7 +165,7 @@ function Dashboard({ userId }: { userId: any }) {
                     discounted.
                   </p>
                 </div>
-                <button className="btn-brand w-full" onClick={start}>
+                <button className="btn-brand w-full" onClick={() => start()}>
                   ▶ Start working (play ads)
                 </button>
               </>
