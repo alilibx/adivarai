@@ -72,16 +72,18 @@ function Surface({ userId }: { userId: any }) {
   const data = useQuery(api.earnings.dashboard, { userId });
   const startSession = useMutation(api.earnings.startSession);
   const endSession = useMutation(api.earnings.endSession);
-  const bridge = useAgentBridge(true); // always auto in the desktop surface
+  const bridge = useAgentBridge(true); // auto-detect the local agent if present
   const [sessionId, setSessionId] = useState<any>(null);
+  const [manual, setManual] = useState(false); // true => user started it by hand
   const transitioning = useRef(false);
 
   useEffect(() => {
     if (data?.activeSessionId && !sessionId) setSessionId(data.activeSessionId);
   }, [data?.activeSessionId, sessionId]);
 
+  // Auto mode drives sessions from the bridge, but never stops a manual session.
   useEffect(() => {
-    if (!bridge.connected) return;
+    if (!bridge.connected || manual) return;
     (async () => {
       if (bridge.busy && !sessionId && !transitioning.current) {
         transitioning.current = true;
@@ -101,7 +103,24 @@ function Surface({ userId }: { userId: any }) {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bridge.connected, bridge.busy, sessionId]);
+  }, [bridge.connected, bridge.busy, sessionId, manual]);
+
+  async function startManual() {
+    if (transitioning.current || sessionId) return;
+    transitioning.current = true;
+    try {
+      const id = await startSession({ userId, agent: "manual", source: "MANUAL" });
+      setManual(true);
+      setSessionId(id);
+    } finally {
+      transitioning.current = false;
+    }
+  }
+  async function stop() {
+    if (sessionId) await endSession({ userId, sessionId });
+    setSessionId(null);
+    setManual(false);
+  }
 
   return (
     <div className="mx-auto max-w-md space-y-3 p-3">
@@ -133,9 +152,23 @@ function Surface({ userId }: { userId: any }) {
       {sessionId ? (
         <AdPlayer userId={userId} sessionId={sessionId} />
       ) : (
-        <div className="panel grid place-items-center p-8 text-center text-sm text-zinc-500">
-          Ads play here while your agent works.
+        <div className="panel grid place-items-center gap-3 p-6 text-center text-sm text-zinc-500">
+          <span>Ads play here while your agent works.</span>
+          <span className="text-xs">
+            Using a desktop/GUI agent? Start a session manually:
+          </span>
         </div>
+      )}
+
+      {/* Manual control — for GUI agents that can't be auto-detected. */}
+      {sessionId ? (
+        <button className="btn-ghost w-full" onClick={stop}>
+          ⏹ Stop session
+        </button>
+      ) : (
+        <button className="btn-brand w-full" onClick={startManual}>
+          ▶ Start working manually
+        </button>
       )}
 
       <p className="text-center text-[11px] text-zinc-600">
