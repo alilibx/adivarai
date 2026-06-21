@@ -25,7 +25,8 @@ tools, thinking — while the human waits. Adivari monetizes that waiting time:
 | Decision | Choice | Rationale |
 |---|---|---|
 | Ad surface | **Desktop app (Tauri preferred, Electron fallback)** | Strongest viewability + fraud control; can hook native CLI agents directly. |
-| Earnings model | **Revenue-share-backed**, displayed as estimated $/hr | Platform can never owe earners more than advertisers were billed. |
+| Earnings model | **Revenue-share-backed**, displayed as estimated $/hr | Platform can never owe earners more than advertisers were billed. See [`PAYMENTS.md`](./PAYMENTS.md). |
+| Backend & database | **Convex** (reactive TypeScript backend + document DB) | Real-time subscriptions replace the WebSocket layer; transactional mutations make the ledger safe; scheduled functions handle pacing + payout holds; actions call Stripe. |
 | First build | **This spec + DB schema** | Lock scope before code. |
 | Agent detection | **Official hooks / CLI wrapper** (start with Claude Code) | Real busy/idle signal, hardest to fake. |
 
@@ -54,7 +55,8 @@ only accrues, during busy intervals that pass viewability + liveness checks.
 
 ## 3. Economic model (the part that must be right)
 
-Earnings are **derived from real advertiser spend**, never from a flat clock.
+Earnings are **derived from real advertiser spend**, never from a flat clock. Every
+dollar paid to an earner is a share of a dollar an advertiser was actually billed.
 
 ```
 earner_payout = Σ(viewable_impressions × eCPM / 1000 × revshare)
@@ -69,7 +71,16 @@ earner_payout = Σ(viewable_impressions × eCPM / 1000 × revshare)
 - If there is no ad demand (no fill), the estimate drops toward $0 — we never pay out
   unbacked money. House ads / fallback network can soften this later.
 
-### Money flow
+> **The earning side and the advertising side are two views of the same money.**
+> Advertisers fund the pool by being billed for views/clicks; earners are paid out of
+> that same pool. The platform's margin is the spread. Because we only ever pay a
+> fraction of what was billed, the system is structurally solvent.
+>
+> See **[`PAYMENTS.md`](./PAYMENTS.md)** for the full breakdown: CPM vs CPC mechanics,
+> worked dollar examples, the eCPM bridge between the two sides, fees, and exactly
+> when money moves.
+
+### Money flow (summary)
 
 ```
 Advertiser card ──Stripe──► Advertiser prepaid balance ──spend──► Platform revenue
@@ -91,48 +102,59 @@ Advertiser card ──Stripe──► Advertiser prepaid balance ──spend─�
 ## 4. Architecture
 
 ```
-┌─────────────────────┐        ┌────────────────────────────────────────┐
-│  Earner desktop app │        │              Adivari Backend             │
-│  (Tauri)            │        │                                          │
-│  • agent detector   │◄─WS───►│  • Auth & accounts (earner / advertiser) │
-│  • ad surface       │  REST  │  • Ad server (targeting, pacing, fill)   │
-│  • viewability +    │        │  • Impression/click ingest + fraud guard │
-│    liveness checks  │        │  • Earnings ledger (double-entry)        │
-└─────────────────────┘        │  • Campaign manager + Stripe billing     │
-                               │  • Payouts                               │
-┌─────────────────────┐        │  • Reporting / analytics                 │
-│ Advertiser web app  │◄─REST─►│                                          │
-│ (Next.js dashboard) │        └───────────────┬──────────────────────────┘
-└─────────────────────┘                        │
-                                 ┌──────────────┴───────────────┐
-                                 │ Postgres │ Redis │ S3 + CDN   │
-                                 │ (ledger, │(counts│ (creative  │
-                                 │  state)  │ pacing│  assets)   │
-                                 │          │ rate) │            │
-                                 └──────────────────────────────┘
+┌─────────────────────┐                ┌───────────────────────────────────┐
+│  Earner desktop app │   Convex client │            Convex backend          │
+│  (Tauri)            │  (live queries  │                                    │
+│  • agent detector   │◄─+ mutations)──►│  queries/   reactive reads          │
+│  • ad surface       │   reactive       │  mutations  transactional writes    │
+│  • viewability +    │   subscriptions  │             (ad select, ingest,     │
+│    liveness checks  │                  │              ledger, accrual)       │
+└─────────────────────┘                  │  actions    Stripe (top-up, payout)│
+                                          │  crons      pacing reset, hold     │
+┌─────────────────────┐   Convex client  │             release, fraud sweep   │
+│ Advertiser web app  │◄────────────────►│                                    │
+│ (Next.js dashboard) │   live queries   │  document DB (convex/schema.ts)    │
+└─────────────────────┘                  │  file storage (creative assets)    │
+                                          └───────────────────────────────────┘
 ```
+
+Convex is the whole backend: a reactive document database plus TypeScript server
+functions. **Live queries** push earnings counters, campaign spend, and busy-state to
+both clients in real time (no separate WebSocket service). **Mutations** are
+transactional, which is exactly what the ledger and budget-draw need. **Actions** make
+the external calls to Stripe. **Scheduled functions / crons** handle daily-cap resets,
+payout hold release, and fraud sweeps.
 
 ### Recommended stack
 
 - **Monorepo** (Turborepo + pnpm):
   - `apps/web` — Next.js (App Router): marketing site, advertiser dashboard, earner
-    web dashboard, auth.
-  - `apps/api` — Node/TypeScript service (NestJS or Fastify): ad serving, ingest,
-    ledger, billing, payouts. Exposes REST + a WebSocket channel for the desktop app.
+    web dashboard, auth. Talks to Convex via `convex/react`.
   - `apps/desktop` — **Tauri** (Rust shell + web UI): agent detector daemon, ad
-    surface window, liveness.
-  - `packages/shared` — shared TypeScript types + a thin client SDK.
-  - `packages/db` — Prisma schema + generated client.
-- **Database:** Postgres (Neon/Supabase) via **Prisma**.
-- **Cache / real-time:** Redis (Upstash) for impression counters, budget pacing,
-  rate limiting, and dedupe.
-- **Object storage / CDN:** S3 (or R2) + CDN for creative assets.
-- **Payments:** **Stripe** for advertiser top-ups; **Stripe Connect / PayPal Payouts
-  / Tremendous** for earner payouts.
-- **Ads:** start with a first-party image/HTML ad server; add **VAST** video support
-  in Phase 4; optional network fallback for fill.
-- **Hosting (MVP):** Vercel (web) + a container host for `apps/api` + managed
-  Postgres/Redis.
+    surface window, liveness. Subscribes to Convex for ad selection + live earnings.
+  - `convex/` — the backend: `schema.ts` plus `queries`, `mutations`, `actions`, and
+    `crons`. This replaces the former `apps/api` service and `packages/db`.
+  - `packages/shared` — shared TypeScript types reused across web/desktop/convex.
+- **Backend & database:** **Convex** (reactive document DB + serverless TS functions).
+  No separate Redis — Convex mutations + indexed documents cover counters, pacing, and
+  dedupe transactionally.
+- **Auth:** Convex Auth (or Clerk integrated with Convex).
+- **File storage / CDN:** Convex file storage for creative assets (swap to S3/R2 + CDN
+  if/when asset volume warrants).
+- **Payments:** **Stripe** (called from Convex actions) for advertiser top-ups;
+  **Stripe Connect / PayPal Payouts / Tremendous** for earner payouts.
+- **Ads:** start with a first-party image/HTML ad server (a Convex query running the
+  auction); add **VAST** video support in Phase 4; optional network fallback for fill.
+- **Hosting (MVP):** Vercel (Next.js web) + Convex (managed). The Tauri app ships as a
+  signed desktop binary.
+
+> **Why Convex fits this product.** The core experience is real-time (a live
+> earnings counter ticking while the agent works) and the core risk is money
+> correctness (a ledger that must never double-spend or pay out unbacked funds).
+> Convex's reactive queries give the first for free, and its transactional mutations
+> give the second — without us operating a WebSocket layer, a cache, and a separate
+> API service. The cost is being on a managed platform with its own query/index model
+> (reflected in `convex/schema.ts`).
 
 ---
 
@@ -166,21 +188,25 @@ Each busy interval carries a **source** (`hook` > `wrapper` > `heuristic` >
 
 ## 6. Ad serving
 
-1. Desktop app opens a WS session and announces `busy_started`.
-2. Backend ad server selects eligible campaigns (active, budget remaining, targeting
-   match, frequency cap ok), runs a simple **auction** (rank by effective value:
-   CPM bid, or CPC bid × predicted CTR), and returns the winning creative + a signed
-   **impression token**.
+1. Desktop app calls a `busyStarted` **mutation**; it subscribes to a live query for
+   ad assignments and its earnings counter.
+2. An ad-selection **query/mutation** picks eligible campaigns (active, budget
+   remaining, targeting match, frequency cap ok), runs a simple **auction** (rank by
+   effective value: CPM bid, or CPC bid × predicted CTR), and returns the winning
+   creative + a signed, single-use **impression token**.
 3. App renders the ad in the surface window.
 4. App measures **viewability** (window focused + foreground; for video ≥50% pixels
-   for ≥2s — MRC standard) and reports a `viewable` impression with the token.
-5. Backend validates token + fraud signals, records the impression, **bills the
-   advertiser**, and **accrues earner revenue**.
-6. Click → recorded with the token, opens advertiser landing URL, bills CPC if
-   applicable.
+   for ≥2s — MRC standard) and calls a `recordImpression` **mutation** with the token.
+5. That mutation (transactional) validates token + fraud signals, records the
+   impression, **draws down the advertiser balance / campaign spend**, and **accrues
+   earner revenue** — all atomically in one write.
+6. Click → a `recordClick` mutation validated against the token, opens the advertiser
+   landing URL, bills CPC if applicable.
 
-**Budget pacing:** Redis counters enforce daily caps and total budget; campaigns are
-pulled from eligibility the moment budget is exhausted.
+**Budget pacing:** daily-cap and lifetime-budget checks run inside the ad-selection
+and billing mutations against indexed counters on the campaign document; a **cron**
+resets daily counters. Because billing is transactional, a campaign can never overspend
+its budget under concurrency.
 
 ---
 

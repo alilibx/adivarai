@@ -1,0 +1,20 @@
+node_modules/
+.next/
+out/
+build/
+.env
+.env.local
+.env*.local
+convex/_generated/
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+.vercel
+
+# agent build output
+agent/dist/
+
+# tauri build output
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/dist/
