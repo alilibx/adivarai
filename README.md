@@ -71,14 +71,14 @@ busy and play ads automatically:
 
 ```sh
 cd agent && npm install && npm run build && npm link   # installs the `adivari` CLI
-adivari hooks install        # adds Claude Code busy/idle hooks (merges settings.json)
-adivari daemon               # leave running — local bridge on 127.0.0.1:8787
+adivari hooks install        # one-time: adds Claude Code busy/idle hooks
 ```
 
 Then open the earner dashboard, flip on **Auto mode**, and use Claude Code normally —
-ads play while the agent works and pause when it's idle. For other agents:
-`adivari run --agent codex -- codex …`. See [`agent/README.md`](./agent/README.md). The
-[`desktop/`](./desktop/README.md) Tauri app packages this surface natively.
+the local bridge **auto-starts on your first prompt**, and ads play while the agent
+works and pause when it's idle. For other agents: `adivari run --agent codex -- codex
+…`. See [`agent/README.md`](./agent/README.md). The [`desktop/`](./desktop/README.md)
+Tauri app packages this surface natively (and also starts the bridge for you).
 
 ## What works now
 

@@ -85,6 +85,15 @@ export function startDaemon(port = BRIDGE_PORT): http.Server {
   }, 15000);
   server.on("close", () => clearInterval(timer));
 
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      // Another instance already owns the port — that's fine, defer to it.
+      console.error(`adivari: bridge already running on ${port}`);
+      process.exit(0);
+    }
+    throw err;
+  });
+
   server.listen(port, BRIDGE_HOST);
   return server;
 }

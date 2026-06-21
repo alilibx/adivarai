@@ -3,7 +3,7 @@
 // Adivari ad surface.
 
 import { startDaemon } from "./daemon";
-import { sendEvent, getHealth } from "./bridge-client";
+import { sendEvent, getHealth, ensureDaemon } from "./bridge-client";
 import { installHooks, uninstallHooks, settingsPath } from "./hooks";
 import { runWrapped } from "./wrapper";
 import { BRIDGE_URL, Source } from "./config";
@@ -34,6 +34,7 @@ async function main() {
       // Called by Claude Code hooks. Must be fast + silent.
       const state = rest[0];
       if (state !== "busy" && state !== "idle") process.exit(0);
+      await ensureDaemon(); // auto-start the bridge if it isn't running
       await sendEvent({
         type: state,
         agent: opt(rest, "agent") ?? "claude-code",
@@ -69,6 +70,7 @@ async function main() {
       }
       const agent = opt(rest.slice(0, sepIndex), "agent") ?? "agent";
       const [command, ...args] = rest.slice(sepIndex + 1);
+      await ensureDaemon();
       runWrapped(agent, command, args);
       break;
     }
@@ -90,6 +92,7 @@ async function main() {
     case "busy":
     case "idle": {
       // Manual override, e.g. `adivari busy --agent cursor`.
+      await ensureDaemon();
       await sendEvent({
         type: cmd,
         agent: opt(rest, "agent"),

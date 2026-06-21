@@ -31,10 +31,14 @@ npm link        # puts `adivari` on your PATH (or `npm i -g .`)
 ## Use with Claude Code
 
 ```sh
-adivari hooks install     # writes ~/.claude/settings.json hooks (merges safely)
-adivari daemon            # leave running
-# open the Adivari ad surface (web app /earner, "Auto mode"), then use Claude Code
+adivari hooks install     # one-time: writes ~/.claude/settings.json hooks (merges safely)
+# open the Adivari ad surface (web app /earner "Auto mode", or the desktop app),
+# then just use Claude Code — the bridge auto-starts on your first prompt.
 ```
+
+The bridge **starts automatically** the first time a hook fires (or the wrapper
+runs), so you don't have to launch `adivari daemon` by hand. You can still run it
+manually for debugging, and the desktop app also starts it on launch.
 
 `adivari hooks uninstall` removes only Adivari's entries. Add `--project` to scope to
 the current repo's `.claude/settings.json`.
