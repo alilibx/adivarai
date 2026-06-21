@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="space-y-16 py-6">
+    <div className="mx-auto max-w-6xl space-y-16 px-4 py-12">
       <section className="text-center">
         <p className="mb-3 inline-block rounded-full border border-edge px-3 py-1 text-xs text-brand2">
           Monetize your agent&apos;s thinking time

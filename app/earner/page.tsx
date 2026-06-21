@@ -6,7 +6,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSession } from "@/app/providers";
 import { usd, num, timeAgo } from "@/lib/format";
-import { AdPlayer } from "@/components/AdPlayer";
+import { AdStage } from "@/components/ad/AdStage";
 import { useAgentBridge } from "@/lib/useAgentBridge";
 
 type Source = "HOOK" | "WRAPPER" | "HEURISTIC" | "MANUAL";
@@ -72,7 +72,7 @@ function Dashboard({ userId }: { userId: any }) {
   }, [autoMode, bridge.connected, bridge.busy, sessionId]);
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-6xl space-y-8 px-4 py-8">
       <div>
         <h1 className="text-2xl font-semibold">Earn dashboard</h1>
         <p className="text-sm text-zinc-400">
@@ -196,7 +196,9 @@ function Dashboard({ userId }: { userId: any }) {
 
         <div className="space-y-4">
           {sessionId ? (
-            <AdPlayer userId={userId} sessionId={sessionId} />
+            <div className="glass p-4">
+              <AdStage userId={userId} sessionId={sessionId} />
+            </div>
           ) : (
             <div className="panel grid place-items-center p-10 text-center text-sm text-zinc-500">
               Start a work session to begin earning.

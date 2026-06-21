@@ -34,7 +34,7 @@ function Dashboard({ userId }: { userId: any }) {
   const starved = balanceCents <= 0 && hasActive;
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-6xl space-y-8 px-4 py-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Advertiser dashboard</h1>

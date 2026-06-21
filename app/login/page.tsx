@@ -43,7 +43,7 @@ function LoginInner() {
   }
 
   return (
-    <div className="mx-auto max-w-md py-10">
+    <div className="mx-auto max-w-md px-4 py-10">
       <div className="panel p-6">
         <h1 className="text-xl font-semibold">
           {mode === "signup" ? "Create your account" : "Welcome back"}

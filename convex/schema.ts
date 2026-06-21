@@ -48,9 +48,10 @@ const campaignStatus = v.union(
 );
 
 const creativeType = v.union(
-  v.literal("IMAGE"),
-  v.literal("HTML"),
-  v.literal("VIDEO"), // VAST, Phase 4
+  v.literal("IMAGE"), // static / animated banner
+  v.literal("VIDEO"), // video pre-roll (highest eCPM)
+  v.literal("NATIVE"), // sponsored dev content card (title/body/cta)
+  v.literal("INTERACTIVE"), // playable HTML unit
 );
 
 const moderationStatus = v.union(
@@ -168,8 +169,13 @@ export default defineSchema({
     campaignId: v.id("campaigns"),
     type: creativeType,
     assetId: v.optional(v.id("_storage")), // Convex file storage handle
-    assetUrl: v.optional(v.string()), // or external CDN url / hosted HTML
+    assetUrl: v.optional(v.string()), // image/video URL, or hosted HTML for INTERACTIVE
     clickUrl: v.string(), // advertiser landing page
+    // Native/sponsored fields (and used as captions for other formats).
+    title: v.optional(v.string()),
+    body: v.optional(v.string()),
+    ctaLabel: v.optional(v.string()),
+    brandName: v.optional(v.string()),
     width: v.optional(v.number()),
     height: v.optional(v.number()),
     moderation: moderationStatus,

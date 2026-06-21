@@ -27,8 +27,14 @@ export function CampaignCard({
   const addCreative = useMutation(api.campaigns.addCreative);
   const genUrl = useMutation(api.campaigns.generateUploadUrl);
 
+  type Fmt = "IMAGE" | "VIDEO" | "NATIVE" | "INTERACTIVE";
+  const [type, setType] = useState<Fmt>("IMAGE");
   const [assetUrl, setAssetUrl] = useState("");
   const [clickUrl, setClickUrl] = useState("");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [ctaLabel, setCtaLabel] = useState("");
+  const [brandName, setBrandName] = useState("");
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -48,21 +54,31 @@ export function CampaignCard({
     return storageId as string;
   }
 
-  async function addImage(e: React.FormEvent) {
+  async function submitCreative(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     setAdding(true);
     try {
       if (!clickUrl) throw new Error("Click-through URL is required");
+      if (type === "NATIVE" && !title)
+        throw new Error("Sponsored content needs a headline");
       await addCreative({
         userId,
         campaignId: campaign._id,
-        type: "IMAGE",
+        type,
         assetUrl: assetUrl || undefined,
         clickUrl,
+        title: title || undefined,
+        body: body || undefined,
+        ctaLabel: ctaLabel || undefined,
+        brandName: brandName || undefined,
       });
       setAssetUrl("");
       setClickUrl("");
+      setTitle("");
+      setBody("");
+      setCtaLabel("");
+      setBrandName("");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error");
     } finally {
@@ -152,48 +168,109 @@ export function CampaignCard({
             ))}
           </div>
         ) : (
-          <form onSubmit={addImage} className="space-y-2">
+          <form onSubmit={submitCreative} className="space-y-2">
             <p className="text-xs text-zinc-400">Add a creative to launch:</p>
-            <input
-              className="input"
-              placeholder="Image URL (or leave blank + upload below)"
-              value={assetUrl}
-              onChange={(e) => setAssetUrl(e.target.value)}
-            />
+
+            <div className="grid grid-cols-4 gap-1">
+              {(["IMAGE", "VIDEO", "NATIVE", "INTERACTIVE"] as Fmt[]).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setType(f)}
+                  className={`rounded-lg border px-2 py-1.5 text-[11px] ${
+                    type === f
+                      ? "border-brand bg-brand/10 text-ink"
+                      : "border-edge text-muted"
+                  }`}
+                >
+                  {f === "INTERACTIVE" ? "Playable" : f.charAt(0) + f.slice(1).toLowerCase()}
+                </button>
+              ))}
+            </div>
+
+            {type === "NATIVE" ? (
+              <>
+                <input
+                  className="input"
+                  placeholder="Brand name"
+                  value={brandName}
+                  onChange={(e) => setBrandName(e.target.value)}
+                />
+                <input
+                  className="input"
+                  placeholder="Headline"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+                <input
+                  className="input"
+                  placeholder="One line of body copy"
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                />
+              </>
+            ) : (
+              <input
+                className="input"
+                placeholder={
+                  type === "VIDEO"
+                    ? "Video URL (mp4 / webm)"
+                    : type === "INTERACTIVE"
+                      ? "Playable HTML URL"
+                      : "Image URL (or upload below)"
+                }
+                value={assetUrl}
+                onChange={(e) => setAssetUrl(e.target.value)}
+              />
+            )}
+
+            {type !== "IMAGE" && (
+              <input
+                className="input"
+                placeholder="Button label (e.g. Try it free)"
+                value={ctaLabel}
+                onChange={(e) => setCtaLabel(e.target.value)}
+              />
+            )}
+
             <input
               className="input"
               placeholder="Click-through URL (https://…)"
               value={clickUrl}
               onChange={(e) => setClickUrl(e.target.value)}
             />
+
             <div className="flex items-center gap-2">
-              <input
-                type="file"
-                accept="image/*"
-                className="text-xs text-zinc-400"
-                onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  setAdding(true);
-                  try {
-                    const storageId = await uploadFile(f);
-                    if (!clickUrl) throw new Error("Add a click-through URL first");
-                    await addCreative({
-                      userId,
-                      campaignId: campaign._id,
-                      type: "IMAGE",
-                      storageId: storageId as any,
-                      clickUrl,
-                    });
-                  } catch (e) {
-                    setErr(e instanceof Error ? e.message : "Upload failed");
-                  } finally {
-                    setAdding(false);
-                  }
-                }}
-              />
+              {(type === "IMAGE" || type === "VIDEO") && (
+                <input
+                  type="file"
+                  accept={type === "VIDEO" ? "video/*" : "image/*"}
+                  className="text-xs text-zinc-400"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    setAdding(true);
+                    try {
+                      if (!clickUrl) throw new Error("Add a click-through URL first");
+                      const storageId = await uploadFile(f);
+                      await addCreative({
+                        userId,
+                        campaignId: campaign._id,
+                        type,
+                        storageId: storageId as any,
+                        clickUrl,
+                        ctaLabel: ctaLabel || undefined,
+                      });
+                    } catch (e) {
+                      setErr(e instanceof Error ? e.message : "Upload failed");
+                    } finally {
+                      setAdding(false);
+                    }
+                  }}
+                />
+              )}
               <button className="btn-brand ml-auto" disabled={adding}>
-                {adding ? "…" : "Add image URL"}
+                {adding ? "…" : "Add creative"}
               </button>
             </div>
             {err && <p className="text-xs text-red-400">{err}</p>}
