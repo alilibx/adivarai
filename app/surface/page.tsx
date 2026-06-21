@@ -7,6 +7,7 @@ import { useSession } from "@/app/providers";
 import { useAgentBridge } from "@/lib/useAgentBridge";
 import { AdPlayer } from "@/components/AdPlayer";
 import { usd } from "@/lib/format";
+import { showWindow, hideWindow } from "@/lib/desktop";
 
 type Source = "HOOK" | "WRAPPER" | "HEURISTIC" | "MANUAL";
 
@@ -30,6 +31,11 @@ function SignIn() {
   const signIn = useMutation(api.auth.signIn);
   const [email, setEmail] = useState("");
   const [err, setErr] = useState<string | null>(null);
+
+  // Make sure the window is visible so the user can sign in.
+  useEffect(() => {
+    void showWindow();
+  }, []);
 
   async function go(mode: "signup" | "signin") {
     setErr(null);
@@ -121,6 +127,14 @@ function Surface({ userId }: { userId: any }) {
     setSessionId(null);
     setManual(false);
   }
+
+  // Desktop: pop the window up when the agent starts working, hide it when the
+  // agent goes idle (but never while a manual session is running).
+  useEffect(() => {
+    if (!bridge.connected) return;
+    if (bridge.busy) void showWindow();
+    else if (!manual) void hideWindow();
+  }, [bridge.connected, bridge.busy, manual]);
 
   return (
     <div className="mx-auto max-w-md space-y-3 p-3">
