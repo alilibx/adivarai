@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useSession } from "@/app/providers";
 
 export function Nav() {
   const { session, signOut } = useSession();
+  const pathname = usePathname();
+  // The compact desktop surface has no dashboard chrome.
+  if (pathname?.startsWith("/surface")) return null;
   return (
     <header className="border-b border-edge/70 backdrop-blur">
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">

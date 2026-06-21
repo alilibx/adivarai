@@ -5,16 +5,16 @@
   "identifier": "ai.adivari.desktop",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:3000/earner"
+    "devUrl": "http://localhost:3000/surface"
   },
   "app": {
     "windows": [
       {
         "title": "Adivari",
         "label": "main",
-        "width": 440,
-        "height": 720,
-        "minWidth": 360,
+        "width": 400,
+        "height": 600,
+        "minWidth": 340,
         "resizable": true,
         "alwaysOnTop": true
       }
