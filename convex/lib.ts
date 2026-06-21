@@ -12,6 +12,9 @@ export const DEFAULT_REVSHARE_BPS = 6000;
 /** Default predicted CTR for CPC campaigns, in basis points. 100 = 1%. */
 export const DEFAULT_PREDICTED_CTR_BPS = 100;
 
+/** Minimum time between serving an ad and a valid viewable confirmation. */
+export const MIN_VIEWABLE_MS = 1500;
+
 /** Days an accrual stays "pending" before becoming withdrawable. */
 export const HOLD_DAYS = 7;
 

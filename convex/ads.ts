@@ -9,6 +9,7 @@ import {
   getEarnerProfile,
   impressionValueCents,
   newToken,
+  MIN_VIEWABLE_MS,
 } from "./lib";
 
 /**
@@ -96,6 +97,12 @@ export const recordImpression = mutation({
       .unique();
     if (!imp || imp.earnerId !== earner._id) throw new Error("Bad token");
     if (imp.viewable) return { earnedCents: imp.earnedCents }; // idempotent
+
+    // Server backstop: reject confirmations that arrive implausibly fast.
+    if (Date.now() - imp.servedAt < MIN_VIEWABLE_MS) {
+      await ctx.db.patch(imp._id, { ivtReason: "too_fast" });
+      return { earnedCents: 0 };
+    }
 
     const campaign = await ctx.db.get(imp.campaignId);
     const session = imp.sessionId ? await ctx.db.get(imp.sessionId) : null;
